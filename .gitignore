@@ -1,2 +1,3 @@
 *.yaml
 synthetic_data/.ipynb_checkpoints/*
+synthetic_data/character_samples/*
