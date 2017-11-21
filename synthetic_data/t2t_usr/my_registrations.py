@@ -4,12 +4,35 @@ import tensorflow as tf
 from six.moves import xrange # pylint: disable=redefined-builtin
 from tensor2tensor.utils import registry
 from tensor2tensor.models.transformer import transformer_small
+from tensor2tensor.data_generators import problem
 from tensor2tensor.data_generators import text_encoder
 from tensor2tensor.data_generators.image import OcrTest
 
 
 @registry.register_problem
 class OcrLatin(OcrTest):
+    def example_reading_spec(self, label_repr=None):
+        if label_repr is None:
+            label_repr = ("image/class/label", tf.VarLenFeature(tf.int64) )
+
+        data_fields = {
+            "image/encoded": tf.FixedLenFeature((), tf.string),
+            "image/format": tf.FixedLenFeature((), tf.string),
+        }
+        label_key, label_type = label_repr  # pylint: disable=unpacking-non-sequence
+        data_fields[label_key] = label_type
+
+        data_items_to_decoders = {
+            "inputs":
+                tf.contrib.slim.tfexample_decoder.Image(
+                    image_key="image/encoded",
+                    format_key="image/format",
+                    channels=3),
+            "targets":
+                tf.contrib.slim.tfexample_decoder.Tensor(label_key),
+        }
+    return data_fields, data_items_to_decoders
+
     def preprocess_example(self, example, mode, _):
         # Resize from usual size ~1350x60 to 90x4 in this test.
         img = example["inputs"]
@@ -41,17 +64,3 @@ class OcrLatin(OcrTest):
               "image/height": [height],
               "image/width": [width]
             }
-
-# @registry.register_hparams
-# def transformer_my_sketch():
-#     """Modified transformer_small."""
-#     hparams = transformer_small()
-#     hparams.batch_size = 16
-#     hparams.max_length = 784
-#     hparams.clip_grad_norm = 5.
-#     hparams.learning_rate_decay_scheme = "noam"
-#     hparams.learning_rate = 0.1
-#     hparams.initializer = "orthogonal"
-#     hparams.sampling_method = "random"
-#     hparams.learning_rate_warmup_steps = 10000
-#     return hparams
