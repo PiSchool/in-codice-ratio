@@ -9,6 +9,22 @@ from tensor2tensor.data_generators import text_encoder
 from tensor2tensor.data_generators.image import OcrTest
 
 
+@registry.register_hparams
+def transformer_small_sketch_ocr_latin():
+    """Modified transformer_small."""
+    hparams = transformer_small()
+    hparams.batch_size = 2048
+    hparams.max_length = 784
+    hparams.clip_grad_norm = 5.
+    hparams.learning_rate_decay_scheme = "noam"
+    hparams.learning_rate = 0.1
+    hparams.initializer = "orthogonal"
+    hparams.sampling_method = "random"
+    hparams.learning_rate_warmup_steps = 10000
+    hparams.num_compress_steps = 4
+    return hparams
+
+
 @registry.register_problem
 class OcrLatin(OcrTest):
     def example_reading_spec(self, label_repr=None):
