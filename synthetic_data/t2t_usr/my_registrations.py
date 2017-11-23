@@ -31,7 +31,7 @@ class OcrLatin(OcrTest):
             "targets":
                 tf.contrib.slim.tfexample_decoder.Tensor(label_key),
         }
-    return data_fields, data_items_to_decoders
+        return data_fields, data_items_to_decoders
 
     def preprocess_example(self, example, mode, _):
         # Resize from usual size ~1350x60 to 90x4 in this test.
