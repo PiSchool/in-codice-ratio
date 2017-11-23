@@ -53,7 +53,7 @@ class OcrLatin(OcrTest):
         # Resize from usual size ~1350x60 to 90x4 in this test.
         img = example["inputs"]
         example["inputs"] = tf.to_int64(
-            tf.image.resize_images(img, [90, 4], tf.image.ResizeMethod.AREA))
+            tf.image.resize_images(img, [320, 16], tf.image.ResizeMethod.AREA))
         return example
 
     def generator(self, data_dir, tmp_dir, is_training):
