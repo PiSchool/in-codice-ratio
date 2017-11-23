@@ -3,26 +3,37 @@ import struct
 import tensorflow as tf
 from six.moves import xrange # pylint: disable=redefined-builtin
 from tensor2tensor.utils import registry
-from tensor2tensor.models.transformer import transformer_small
+from tensor2tensor.layers import common_layers
+from tensor2tensor.models import transformer
+from tensor2tensor.models import transformer_vae
 from tensor2tensor.data_generators import problem
 from tensor2tensor.data_generators import text_encoder
 from tensor2tensor.data_generators.image import OcrTest
 
 
-@registry.register_hparams
-def transformer_small_sketch_ocr_latin():
-    """Modified transformer_small."""
-    hparams = transformer_small()
-    hparams.batch_size = 2048
-    hparams.max_length = 784
-    hparams.clip_grad_norm = 5.
-    hparams.learning_rate_decay_scheme = "noam"
-    hparams.learning_rate = 0.1
-    hparams.initializer = "orthogonal"
-    hparams.sampling_method = "random"
-    hparams.learning_rate_warmup_steps = 10000
-    hparams.num_compress_steps = 4
-    return hparams
+@registry.register_model
+class TransformerSketchOcr(transformer.Transformer):
+    """Transformer with strided convolutions."""
+    def encode(self, inputs, target_space, hparams):
+        """Add two layers strided convolutions ontop of encode."""
+        inputs = common_layers.conv_block(
+            inputs,
+            hparams.hidden_size, [((1, 1), (3, 3))],
+            first_relu=False,
+            padding="SAME",
+            force2d=True,
+            name="small_image_conv")
+
+        hparams.num_compress_steps = 4
+        compressed_inputs = transformer_vae.compress(
+            inputs,
+            c=None,
+            is_2d=True,
+            hparams=hparams,
+            name="convolutions")
+
+        return super(TransformerSketchOcr, self).encode(
+            compressed_inputs, target_space, hparams)
 
 
 @registry.register_problem
