@@ -14,7 +14,7 @@
 "pro":["pro"],
 "prae":["prae"],
 "qui":["qui"],
-"que":["que"],
+"que$":["que"],
 "us": ["curl"],
 "or": [["o","r_2"], ["o","r"]],
 "Or": [["O","r_2"], ["O","r"]],

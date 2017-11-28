@@ -7,6 +7,7 @@ import string
 import numpy as np
 import cv2
 import networkx as nx
+import image_utils as iu
 
 
 PATTERN2SYMBOL = json.load(open('abbr_matchings.json'))
@@ -72,7 +73,7 @@ def generate_word(word, dataset_filenames):
 
         images.append((c, img[char_y:char_y+char_h,char_x:char_x+char_w]))
 
-    width = np.sum([img.shape[1] for c, img in images])+ len(images)
+    width = np.sum([img.shape[1] for c, img in images])*2
     height = np.max([img.shape[0] for c, img in images])*2
 
     midline = int(height/2)
@@ -114,51 +115,91 @@ def generate_word(word, dataset_filenames):
             print(blank[start_y:end_y,start_x:end_x].shape, image.shape)
             raise
 
-    return blank
+    # bounding box on the generated word to get rid of extra white space
+    _, _, stats, _ = cv2.connectedComponentsWithStats(cv2.bitwise_not(blank))
+    stats = sorted(stats, key=lambda s: s[4])
+    conn_comp_stats = stats[:-1]
+    blank_x1 = min([ccs[0] for ccs in conn_comp_stats])
+    blank_y1 = min([ccs[1] for ccs in conn_comp_stats])
+    blank_x2 = max([ccs[0]+ccs[2] for ccs in conn_comp_stats])
+    blank_y2 = max([ccs[1]+ccs[3] for ccs in conn_comp_stats])
+    return blank[blank_y1:blank_y2,blank_x1:blank_x2]
 
-def generate_lines(text, maxlen, dataset_filenames, dst_folder='synthetic_lines/'):
+def generate_lines(text, maxlen, dataset_filenames, dst_folder='synthetic_lines/', offset=0):
     """
         text: array of words (str)
         maxlen: maximum width of the line image
 
-        return: a list of text line images
+        return: # of lines generated
     """
     line_count = 0
     linelen = 0
     text = list(text)
     words_in_line = []
-    lines = []
 
     for i,wordstr in enumerate(text):
         w = generate_word(wordstr, dataset_filenames)
         linelen += w.shape[1]
         words_in_line.append((wordstr, w))
         if linelen > maxlen or i == (len(text)-1): # we have completed a row, generate image
-            height = np.max([wil.shape[0] for _,wil in words_in_line])
-            width = np.sum([wil.shape[1] for _,wil in words_in_line]) + len(words_in_line)*2
+            minspace, maxspace = (4,11) #px
+            height = np.max([wil.shape[0] for _,wil in words_in_line])*2
+            width = np.sum([wil.shape[1] for _,wil in words_in_line]) + len(words_in_line)*11
             blankline = np.ones((height, width), dtype='uint8')*255
-            start_x = 5
+            start_x = np.random.randint(minspace,maxspace)
             linestr = ''
 
             for s, wil in words_in_line:
                 end_x = start_x + wil.shape[1]
-                start_y = int(height/2 - wil.shape[0]/2)
+
+                blackpx_w = iu.count_black_pixels_per_row(wil)
+                blackpx_w_smooth = iu.smooth(blackpx_w, window_len=int(wil.shape[0]/3))
+
+                loc_maxima = np.r_[True, blackpx_w_smooth[1:] >= blackpx_w_smooth[:-1]] &\
+                                  np.r_[blackpx_w_smooth[:-1] >= blackpx_w_smooth[1:], True]
+                loc_minima = np.r_[True, blackpx_w_smooth[1:] <= blackpx_w_smooth[:-1]] &\
+                                  np.r_[blackpx_w_smooth[:-1] <= blackpx_w_smooth[1:], True]
+                max_ixs = np.where(loc_maxima)[0]
+                min_ixs = np.where(loc_minima)[0]
+                top2_ixs = max_ixs[np.argsort(blackpx_w_smooth[max_ixs])[-2:]] # top 2 maximum values
+
+                if len(top2_ixs) == 2:
+                    top1, top2 = sorted(top2_ixs)
+                    midval = min_ixs[min_ixs>top1]
+                    midval = midval[midval<top2]
+                    midval = midval[height/4<midval]
+                    midval = midval[midval<height*3/4]
+                    if len(midval) > 0:
+                        start_y = int(height/2 - midval[-1])
+                    else:
+                        start_y = int(height/2 - wil.shape[0]/2)
+                else:
+                    start_y = int(height/2 - wil.shape[0]/2)
+
                 end_y = start_y + wil.shape[0]
+
                 blankline[start_y:end_y,start_x:end_x] = cv2.bitwise_and(blankline[start_y:end_y,start_x:end_x], wil)
-                start_x += wil.shape[1] #+ np.random.randint(3,7)
+                start_x += wil.shape[1] + np.random.randint(minspace,maxspace)
                 linestr += s+' '
 
-            cv2.imwrite(dst_folder+str(line_count)+'.png',blankline)
-            with open(dst_folder+str(line_count)+'.txt', mode='w') as f:
-                f.write(linestr+'\n')
+            # bounding box on the generated line to get rid of extra white space
+            _, _, stats, _ = cv2.connectedComponentsWithStats(cv2.bitwise_not(blankline))
+            stats = sorted(stats, key=lambda s: s[4])
+            conn_comp_stats = stats[:-1]
+            blank_x1 = min([ccs[0] for ccs in conn_comp_stats])
+            blank_y1 = min([ccs[1] for ccs in conn_comp_stats])
+            blank_x2 = max([ccs[0]+ccs[2] for ccs in conn_comp_stats])
+            blank_y2 = max([ccs[1]+ccs[3] for ccs in conn_comp_stats])
 
-            lines.append((linestr, blankline))
+            cv2.imwrite(dst_folder+str(offset+line_count)+'.png',blankline[blank_y1:blank_y2,blank_x1:blank_x2])
+            with open(dst_folder+str(offset+line_count)+'.txt', mode='w') as f:
+                f.write(linestr+'\n')
             #reset
             line_count += 1
             linelen = 0
             words_in_line = []
 
-    return lines
+    return line_count
 
 
 if __name__ == '__main__':
@@ -171,13 +212,16 @@ if __name__ == '__main__':
         for char in os.listdir(dataset_folder)
     }
 
-    corpus_files = [corpus_folder+f for f in os.listdir(corpus_folder)]
+    corpus_files = sorted([corpus_folder+f for f in os.listdir(corpus_folder)])
+    tot_imgs = 0
 
-    for corpus_file in corpus_files[:1]:
+    for corpus_file in corpus_files:
         print(corpus_file)
         corpus = open(corpus_file)
         text = re.sub(r'[0-9]|\'|"|,|:|;|\(|\)|\[|\]|<|>|!|\?|—|-|†', '', corpus.read().replace('\n',' ').replace('.', ' . '))
 
         line_imgs = generate_lines(filter(lambda x: len(x)>0,text.split(' ')[1:]),
-                                   1200, dataset_filenames, dst_folder=dest_folder)
-        print('Lines generated:',len(line_imgs))
+                                   1200, dataset_filenames, dst_folder=dest_folder, offset=tot_imgs)
+        tot_imgs += line_imgs
+        print('Lines generated:', line_imgs)
+    print("total lines:",tot_imgs)
