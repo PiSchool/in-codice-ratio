@@ -7,7 +7,7 @@
 "bus$": ["b_semicolon"],
 "s$": ["s_tall", "s_mid", "s_low"],
 "s\\.$": [["s_tall","dot"], ["s_mid","dot"], ["s_low","dot"]],
-"(?<=[a-zA-z]+)rum": ["rum"],
+"rum": ["rum"],
 "pos": [["p","curl"]],
 "Pos": [["P","curl"]],
 "per":["per"],

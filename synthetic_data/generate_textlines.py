@@ -163,18 +163,21 @@ def generate_lines(text, maxlen, dataset_filenames, dst_folder='synthetic_lines/
 
 if __name__ == '__main__':
     dataset_folder = 'character_samples/'
-    dest_folder = 'synthetic_lines/'
+    corpus_folder = '../../lm_gen/lm_docs/'
+    dest_folder = 'ocr/'
 
-    dataset_filenames = {char: [dataset_folder+char+'/'+f for f in os.listdir(dataset_folder+char)] for char in os.listdir(dataset_folder)}
+    dataset_filenames = {
+        char: [dataset_folder+char+'/'+f for f in os.listdir(dataset_folder+char)]
+        for char in os.listdir(dataset_folder)
+    }
 
-    corpus = open('latin.txt')
-    text = re.sub(r'[0-9]|\'|"|,|:|;|\(|\)|\[|\]|<|>|!|\?|—|-|†', '', corpus.read().replace('\n',' ').replace('.', ' . '))
+    corpus_files = [corpus_folder+f for f in os.listdir(corpus_folder)]
 
-    line_imgs = generate_lines(filter(lambda x: len(x)>0,text.split(' ')[1:]),
-                               1200, dataset_filenames)
-    print('Lines generated:',len(line_imgs))
-    #
-    # for i,(wordstr, line) in enumerate(line_imgs):
-    #     cv2.imwrite(dest_folder+str(i)+'.png',line)
-    #     with open(dest_folder+str(i)+'.txt', mode='w') as f:
-    #         f.write(wordstr+'\n')
+    for corpus_file in corpus_files[:1]:
+        print(corpus_file)
+        corpus = open(corpus_file)
+        text = re.sub(r'[0-9]|\'|"|,|:|;|\(|\)|\[|\]|<|>|!|\?|—|-|†', '', corpus.read().replace('\n',' ').replace('.', ' . '))
+
+        line_imgs = generate_lines(filter(lambda x: len(x)>0,text.split(' ')[1:]),
+                                   1200, dataset_filenames, dst_folder=dest_folder)
+        print('Lines generated:',len(line_imgs))
