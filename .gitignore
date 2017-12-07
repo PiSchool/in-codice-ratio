@@ -1,5 +1,5 @@
-synthetic_data/.ipynb_checkpoints/
-synthetic_data/character_samples/
-synthetic_data/ocr*
+.ipynb_checkpoints/
+character_samples/
+ocr*
 *.pyc
 

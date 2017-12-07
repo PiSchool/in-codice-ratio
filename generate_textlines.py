@@ -7,7 +7,6 @@ import string
 import numpy as np
 import cv2
 import networkx as nx
-import image_utils as iu
 
 
 PATTERN2SYMBOL = json.load(open('abbr_matchings.json'))
@@ -22,14 +21,90 @@ UPPER_SYMBOLS = ['apostrophe','curl']
 OLD_SYMBOLS = ['a','b','c','d_mid','d_tall','e','f','g','h','i','l','m','n','o','p','q','r','s_tall','s_mid','s_low','t','u']
 
 
-def compute_centroid(img):
-    image = cv2.bitwise_not(img.copy())/255
+def count_black_pixels_per_row(image):
+    black_counts = []
+    for row in image:
+        black_pixels = len(row) - cv2.countNonZero(row)
+        black_counts.append(black_pixels)
 
-    X, Y = np.meshgrid(range(0,image.shape[1]),range(0, image.shape[0]))
-    x_coord = int(np.round((X*image).sum() / image.sum().astype("float")))
-    y_coord = int(np.round((Y*image).sum() / image.sum().astype("float")))
+    return np.array(black_counts)
 
-    return x_coord, y_coord
+def smooth(x,window_len=11,window='hanning'):
+    """smooth the data using a window with requested size.
+
+    This method is based on the convolution of a scaled window with the signal.
+    The signal is prepared by introducing reflected copies of the signal
+    (with the window size) in both ends so that transient parts are minimized
+    in the begining and end part of the output signal.
+
+    input:
+        x: the input signal
+        window_len: the dimension of the smoothing window; should be an odd integer
+        window: the type of window from 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'
+            flat window will produce a moving average smoothing.
+
+    output:
+        the smoothed signal
+
+    example:
+
+    t=linspace(-2,2,0.1)
+    x=sin(t)+randn(len(t))*0.1
+    y=smooth(x)
+
+    see also:
+
+    numpy.hanning, numpy.hamming, numpy.bartlett, numpy.blackman, numpy.convolve
+    scipy.signal.lfilter
+
+    TODO: the window parameter could be the window itself if an array instead of a string
+    NOTE: length(output) != length(input), to correct this: return y[(window_len/2-1):-(window_len/2)] instead of just y.
+    """
+
+    if x.ndim != 1:
+        raise( ValueError, "smooth only accepts 1 dimension arrays.")
+
+    if x.size < window_len:
+        raise( ValueError, "Input vector needs to be bigger than window size.")
+
+
+    if window_len<3:
+        return x
+
+
+    if not window in ['flat', 'hanning', 'hamming', 'bartlett', 'blackman']:
+        raise(ValueError, "Window is on of 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'")
+
+
+    s=np.r_[x[window_len-1:0:-1],x,x[-2:-window_len-1:-1]]
+    #print(len(s))
+    if window == 'flat': #moving average
+        w=np.ones(window_len,'d')
+    else:
+        w=eval('np.'+window+'(window_len)')
+
+    y=np.convolve(w/w.sum(),s,mode='valid')
+    return y[(int(window_len/2)-1):-(int(window_len/2))]
+
+def get_connected_components_bbxs(image):
+    """
+        return x,y,w,h bounding boxes for each connected component in the image,
+        excluding the background.
+    """
+    _, _, stats, _ = cv2.connectedComponentsWithStats(cv2.bitwise_not(image))
+    stats = sorted(stats, key=lambda s: s[4])
+    conn_comp_stats = stats[:-1]
+    return conn_comp_stats
+
+def largest_boundingbox(bbxs):
+    """
+        compute largest bounding box given a list of bounding boxes
+    """
+    x1 = min([bbx[0] for bbx in bbxs])
+    y1 = min([bbx[1] for bbx in bbxs])
+    x2 = max([bbx[0]+bbx[2] for bbx in bbxs])
+    y2 = max([bbx[1]+bbx[3] for bbx in bbxs])
+    return x1, y1, x2, y2
 
 
 def generate_word(word, dataset_filenames):
@@ -38,7 +113,6 @@ def generate_word(word, dataset_filenames):
 
     for (start, end), pattern in alt_decomp:
         alt_graph.add_edge(start, end, label=pattern)
-
     try:
         node_path = sample(list(nx.all_simple_paths(alt_graph, 0, len(word))), 1)[0]
     except:
@@ -59,19 +133,15 @@ def generate_word(word, dataset_filenames):
         s = sample(dataset_filenames[c], 1)[0]
         img = cv2.imread(s, cv2.IMREAD_GRAYSCALE)
 
-        comp_n, labels, stats, centroids = cv2.connectedComponentsWithStats(cv2.bitwise_not(img))
-        stats = sorted(stats, key=lambda s: s[4])
+        bbxs = get_connected_components_bbxs(img)
 
         if c in OLD_SYMBOLS:
-            char_x, char_y, char_w, char_h, char_a = stats[-2]
+            char_x, char_y, char_w, char_h, char_a = bbxs[-1]
+            char_x1, char_y1, char_x2, char_y2 = char_x, char_y, char_x+char_w, char_y+char_h
         else:
-            conn_comp_stats = stats[:-1]
-            char_x = min([ccs[0] for ccs in conn_comp_stats])
-            char_y = min([ccs[1] for ccs in conn_comp_stats])
-            char_w = max([ccs[0]+ccs[2] for ccs in conn_comp_stats])-char_x
-            char_h = max([ccs[1]+ccs[3] for ccs in conn_comp_stats])-char_y
+            char_x1, char_y1, char_x2, char_y2 = largest_boundingbox(bbxs)
 
-        images.append((c, img[char_y:char_y+char_h,char_x:char_x+char_w]))
+        images.append((c, img[char_y1:char_y2,char_x1:char_x2]))
 
     width = np.sum([img.shape[1] for c, img in images])*2
     height = np.max([img.shape[0] for c, img in images])*2
@@ -85,12 +155,11 @@ def generate_word(word, dataset_filenames):
         crop_start = midline-int(image.shape[0]/2)
         crop_end = crop_start + image.shape[0]
         img_crop = blank.copy()[crop_start:crop_end,:]
-        _, _, stats, _ = cv2.connectedComponentsWithStats(cv2.bitwise_not(img_crop))
-        stats = sorted(stats, key=lambda s: s[4])
-        conn_comp_stats = stats[:-1]
 
-        if len(conn_comp_stats) > 0:
-            start_x = max([ccs[0]+ccs[2] for ccs in conn_comp_stats])
+        bbxs = get_connected_components_bbxs(img_crop)
+
+        if len(bbxs) > 0:
+            start_x = max([bbx[0]+bbx[2] for bbx in bbxs])
         else:
             start_x = int(np.sum([im.shape[1] for c, im in images[:i]]))
 
@@ -103,10 +172,6 @@ def generate_word(word, dataset_filenames):
         if c in UPPER_SYMBOLS:
             start_y = midline - int((image.shape[0]/2)*2)
 
-        # add random vertical shift
-        # y_shift = np.random.randint(-1,2)
-        # start_y += y_shift
-
         end_x = start_x + image.shape[1]
         end_y = start_y + image.shape[0]
         try:
@@ -116,13 +181,9 @@ def generate_word(word, dataset_filenames):
             raise
 
     # bounding box on the generated word to get rid of extra white space
-    _, _, stats, _ = cv2.connectedComponentsWithStats(cv2.bitwise_not(blank))
-    stats = sorted(stats, key=lambda s: s[4])
-    conn_comp_stats = stats[:-1]
-    blank_x1 = min([ccs[0] for ccs in conn_comp_stats])
-    blank_y1 = min([ccs[1] for ccs in conn_comp_stats])
-    blank_x2 = max([ccs[0]+ccs[2] for ccs in conn_comp_stats])
-    blank_y2 = max([ccs[1]+ccs[3] for ccs in conn_comp_stats])
+    bbxs = get_connected_components_bbxs(blank)
+    blank_x1, blank_y1, blank_x2, blank_y2 = largest_boundingbox(bbxs)
+
     return blank[blank_y1:blank_y2,blank_x1:blank_x2]
 
 def generate_lines(text, maxlen, dataset_filenames, dst_folder='synthetic_lines/', offset=0):
@@ -152,8 +213,8 @@ def generate_lines(text, maxlen, dataset_filenames, dst_folder='synthetic_lines/
             for s, wil in words_in_line:
                 end_x = start_x + wil.shape[1]
 
-                blackpx_w = iu.count_black_pixels_per_row(wil)
-                blackpx_w_smooth = iu.smooth(blackpx_w, window_len=int(wil.shape[0]/3))
+                blackpx_w = count_black_pixels_per_row(wil)
+                blackpx_w_smooth = smooth(blackpx_w, window_len=int(wil.shape[0]/3))
 
                 loc_maxima = np.r_[True, blackpx_w_smooth[1:] >= blackpx_w_smooth[:-1]] &\
                                   np.r_[blackpx_w_smooth[:-1] >= blackpx_w_smooth[1:], True]
@@ -183,13 +244,8 @@ def generate_lines(text, maxlen, dataset_filenames, dst_folder='synthetic_lines/
                 linestr += s+' '
 
             # bounding box on the generated line to get rid of extra white space
-            _, _, stats, _ = cv2.connectedComponentsWithStats(cv2.bitwise_not(blankline))
-            stats = sorted(stats, key=lambda s: s[4])
-            conn_comp_stats = stats[:-1]
-            blank_x1 = min([ccs[0] for ccs in conn_comp_stats])
-            blank_y1 = min([ccs[1] for ccs in conn_comp_stats])
-            blank_x2 = max([ccs[0]+ccs[2] for ccs in conn_comp_stats])
-            blank_y2 = max([ccs[1]+ccs[3] for ccs in conn_comp_stats])
+            bbxs = get_connected_components_bbxs(blankline)
+            blank_x1, blank_y1, blank_x2, blank_y2 = largest_boundingbox(bbxs)
 
             cv2.imwrite(dst_folder+str(offset+line_count)+'.png',blankline[blank_y1:blank_y2,blank_x1:blank_x2])
             with open(dst_folder+str(offset+line_count)+'.txt', mode='w') as f:
@@ -204,7 +260,7 @@ def generate_lines(text, maxlen, dataset_filenames, dst_folder='synthetic_lines/
 
 if __name__ == '__main__':
     dataset_folder = 'character_samples/'
-    corpus_folder = '../../lm_gen/lm_docs/'
+    corpus_folder = 'corpus/'
     dest_folder = 'ocr/'
 
     dataset_filenames = {
