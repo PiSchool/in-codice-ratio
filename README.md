@@ -51,4 +51,4 @@ $ t2t-trainer \
 # Author
 
 This project was developed by [Elena Nieddu](https://github.com/ErisDelaunay) during [Pi School's AI programme](http://picampus-school.com/programme/school-of-ai/) in Fall 2017.
-![photo of Elena Nieddu](http://picampus-school.com/wp-content/uploads/2017/11/IMG_2145-2-400x400.jpg)
+![photo of Elena Nieddu](http://picampus-school.com/wp-content/uploads/2017/11/IMG_2145-2-150x150.jpg)
