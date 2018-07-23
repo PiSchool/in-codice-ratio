@@ -26,7 +26,7 @@ json file ```abbr_matchings.json``` maps text to sequences of symbols in the dat
 - tensor2tensor
 
 ### Usage
-Preprocess generated data (synthetic dataset in the form of i.png, i.txt couples must be in $TMP_DIR/ocr) and put it into $DATA_DIR, using custom problem definition (in ```t2t_usr```):
+Preprocess generated data (synthetic dataset in the form of i.png, i.txt couples must be in ```$TMP_DIR/ocr```) and put it into ```$DATA_DIR```, using custom problem definition (in ```t2t_usr```):
 
 ```
 $ t2t-datagen \
